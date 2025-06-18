@@ -3,6 +3,7 @@
 namespace Devcake\LaravelLokiLogging;
 
 use Monolog\Handler\HandlerInterface;
+use Monolog\LogRecord;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
 
@@ -38,22 +39,23 @@ class L3Logger implements HandlerInterface
 
     /**
      * This handler is capable of handling every record
-     * @param array $record
+     * @param LogRecord $record
      * @return bool
      */
-    public function isHandling(array $record): bool
+    public function isHandling(LogRecord $record): bool
     {
         return true;
     }
 
-    public function handle(array $record): bool
+    public function handle(LogRecord $record): bool
     {
-        $this->hasError = $this->hasError || $record['level_name'] === 'ERROR';
-        $message = $this->formatString($this->format, $record);
-        $tags = array_merge($record['context'], $this->context);
+        $this->hasError = $this->hasError || $record->level->name === 'ERROR';
+        $recordArray = $record->toArray();
+        $message = $this->formatString($this->format, $recordArray);
+        $tags = array_merge($recordArray['context'], $this->context);
         foreach ($tags as $tag => $value) {
             if (is_string($value)) {
-                $tags[$tag] = $this->formatString($value, $record);
+                $tags[$tag] = $this->formatString($value, $recordArray);
             } else {
                 unset($tags[$tag]);
             }
@@ -68,7 +70,9 @@ class L3Logger implements HandlerInterface
     public function handleBatch(array $records): void
     {
         foreach ($records as $record) {
-            $this->handle($record);
+            if ($record instanceof LogRecord) {
+                $this->handle($record);
+            }
         }
     }
 
