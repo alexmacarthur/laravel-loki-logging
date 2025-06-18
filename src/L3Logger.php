@@ -2,27 +2,34 @@
 
 namespace Devcake\LaravelLokiLogging;
 
-
 use Monolog\Handler\HandlerInterface;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Contracts\Foundation\Application;
 
 class L3Logger implements HandlerInterface
 {
-    /** @var resource */
-    private $file;
-    /** @var boolean */
-    private $hasError;
-    /** @var array */
-    private $context;
-    /** @var string */
-    private $format;
+    /** @var resource|\fopen */
+    private mixed $file;
+    private bool $hasError = false;
+    private array $context;
+    private string $format;
+    private ConfigRepository $config;
+    private Application $app;
 
     public function __construct(string $format = '[{level_name}] {message}', array $context = [])
     {
-        $this->format = config('l3.format');
-        $this->context = config('l3.context');
+        $this->config = \app('config');
+        $this->app = \app();
+        
+        $this->format = $this->config->get('l3.format');
+        $this->context = $this->config->get('l3.context');
 
-        $file = storage_path(L3ServiceProvider::LOG_LOCATION);
+        $file = $this->app->storagePath() . '/' . L3ServiceProvider::LOG_LOCATION;
         if (!file_exists($file)) {
+            $dir = dirname($file);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
             touch($file);
         }
         $this->file = fopen($file, 'a');
@@ -41,7 +48,7 @@ class L3Logger implements HandlerInterface
 
     public function handle(array $record): bool
     {
-        $this->hasError |= $record['level_name'] === 'ERROR';
+        $this->hasError = $this->hasError || $record['level_name'] === 'ERROR';
         $message = $this->formatString($this->format, $record);
         $tags = array_merge($record['context'], $this->context);
         foreach ($tags as $tag => $value) {
@@ -51,8 +58,8 @@ class L3Logger implements HandlerInterface
                 unset($tags[$tag]);
             }
         }
-        return fwrite($this->file, json_encode([
-                'time' => now()->getPreciseTimestamp(),
+        return (bool) fwrite($this->file, json_encode([
+                'time' => (int) (microtime(true) * 1000000),
                 'tags' => $tags,
                 'message' => $message
             ]) . "\n");
@@ -65,7 +72,7 @@ class L3Logger implements HandlerInterface
         }
     }
 
-    public function flush($force = false): void
+    public function flush(bool $force = false): void
     {
         if ($this->hasError || $force) {
             $persister = new L3Persister();

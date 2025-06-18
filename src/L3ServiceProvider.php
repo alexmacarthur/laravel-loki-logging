@@ -8,7 +8,7 @@ class L3ServiceProvider extends ServiceProvider
 {
     public const LOG_LOCATION = 'logs/loki.log';
 
-    public function boot()
+    public function boot(): void
     {
         $this->publishes([
             __DIR__ . '/l3config.php' => config_path('l3config.php')
@@ -18,7 +18,7 @@ class L3ServiceProvider extends ServiceProvider
         ]);
     }
 
-    public function register()
+    public function register(): void
     {
         $this->mergeConfigFrom(
             __DIR__ . '/l3config.php',

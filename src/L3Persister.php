@@ -11,9 +11,9 @@ class L3Persister extends Command
     protected $signature = 'loki:persist';
     protected $description = 'Persist recent log messages to loki';
 
-    public function handle()
+    public function handle(): void
     {
-        $file = $file = storage_path(L3ServiceProvider::LOG_LOCATION);
+        $file = storage_path(L3ServiceProvider::LOG_LOCATION);
         if (!file_exists($file)) return;
 
         $content = file_get_contents($file);
@@ -30,6 +30,8 @@ class L3Persister extends Command
         foreach ($messages as $message) {
             if ($message === "") continue;
             $data = json_decode($message);
+            if ($data === null) continue;
+            
             $resp = $http->post($path, [
                 'streams' => [[
                     'stream' => $data->tags,
