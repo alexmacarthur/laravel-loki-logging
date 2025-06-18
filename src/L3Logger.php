@@ -17,7 +17,7 @@ class L3Logger implements HandlerInterface
     private ConfigRepository $config;
     private Application $app;
 
-    public function __construct(string $format = '[{level_name}] {message}', array $context = [])
+    public function __construct()
     {
         $this->config = \app('config');
         $this->app = \app();
