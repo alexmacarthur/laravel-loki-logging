@@ -52,7 +52,7 @@ class L3Logger implements HandlerInterface
         $this->hasError = $this->hasError || $record->level->name === 'ERROR';
         $recordArray = $record->toArray();
         $message = $this->formatString($this->format, $recordArray);
-        $tags = array_merge($recordArray['context'], $this->context);
+        $tags = array_merge($this->context, $recordArray['context']);
         foreach ($tags as $tag => $value) {
             if (is_string($value)) {
                 $tags[$tag] = $this->formatString($value, $recordArray);
