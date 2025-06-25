@@ -2,8 +2,8 @@
 
 namespace Devcake\LaravelLokiLogging;
 
-
 use Illuminate\Console\Command;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
 
 class L3Persister extends Command
@@ -22,25 +22,24 @@ class L3Persister extends Command
         $messages = explode("\n", $content);
         if (count($messages) === 0) return;
 
-        $http = Http::withBasicAuth(
-            config('l3.loki.username'),
-            config('l3.loki.password')
-        );
         $path = config('l3.loki.server') . "/loki/api/v1/push";
-        foreach ($messages as $message) {
-            if ($message === "") continue;
+
+        Http::pool(fn (Pool $pool) => array_map(function ($message) use ($pool, $path) {
             $data = json_decode($message);
-            if ($data === null) continue;
-            
-            $resp = $http->post($path, [
+            if ($data === null) return null;
+
+            return $pool->as('loki_' . uniqid())->withBasicAuth(
+                config('l3.loki.username'),
+                config('l3.loki.password')
+            )->post($path, [
                 'streams' => [[
                     'stream' => $data->tags,
                     'values' => [[
                         strval($data->time * 1000),
-                        $data->message
+                        $data->message,
                     ]]
                 ]]
             ]);
-        }
+        }, $messages));
     }
 }
