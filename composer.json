@@ -1,8 +1,9 @@
 {
   "name": "alexmacarthur/laravel-loki-logging",
-  "version": "0.0.1",
-  "description": "Logging to Loki for Laravel.",
+  "version": "0.0.2",
+  "description": "Send your Laravel logs to a Grafana Loki server.",
   "type": "library",
+  "license": "MIT",
   "authors": [
     {
       "name": "Alex MacArthur",
