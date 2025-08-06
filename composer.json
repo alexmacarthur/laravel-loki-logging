@@ -1,12 +1,13 @@
 {
   "name": "alexmacarthur/laravel-loki-logging",
   "version": "0.0.1",
-  "description": "Logging to Loki for Laravel",
+  "description": "Logging to Loki for Laravel.",
   "type": "library",
   "authors": [
     {
-      "name": "Sven Mol",
-      "email": "s.mol@devcake.nl"
+      "name": "Alex MacArthur",
+      "email": "dev@macarthur.me",
+      "homepage": "https://macarthur.me"
     }
   ],
   "require": {
@@ -20,14 +21,17 @@
   },
   "autoload": {
     "psr-4": {
-      "Devcake\\LaravelLokiLogging\\": "src/"
+      "AlexMacArthur\\LaravelLokiLogging\\": "src/"
     }
   },
   "extra": {
     "laravel": {
       "providers": [
-        "Devcake\\LaravelLokiLogging\\L3ServiceProvider"
+        "AlexMacArthur\\LaravelLokiLogging\\L3ServiceProvider"
       ]
     }
+  },
+  "require-dev": {
+    "laravel/pint": "^1.24"
   }
 }

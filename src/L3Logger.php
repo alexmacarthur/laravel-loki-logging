@@ -1,34 +1,39 @@
 <?php
 
-namespace Devcake\LaravelLokiLogging;
+namespace AlexMacArthur\LaravelLokiLogging;
 
-use Monolog\Handler\HandlerInterface;
-use Monolog\LogRecord;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
+use Monolog\Handler\HandlerInterface;
+use Monolog\LogRecord;
 
 class L3Logger implements HandlerInterface
 {
     /** @var resource|\fopen */
     private mixed $file;
+
     private bool $hasError = false;
+
     private array $context;
+
     private string $format;
+
     private ConfigRepository $config;
+
     private Application $app;
 
     public function __construct()
     {
         $this->config = \app('config');
         $this->app = \app();
-        
+
         $this->format = $this->config->get('l3.format');
         $this->context = $this->config->get('l3.context');
 
-        $file = $this->app->storagePath() . '/' . L3ServiceProvider::LOG_LOCATION;
-        if (!file_exists($file)) {
+        $file = $this->app->storagePath().'/'.L3ServiceProvider::LOG_LOCATION;
+        if (! file_exists($file)) {
             $dir = dirname($file);
-            if (!is_dir($dir)) {
+            if (! is_dir($dir)) {
                 mkdir($dir, 0755, true);
             }
             touch($file);
@@ -39,8 +44,6 @@ class L3Logger implements HandlerInterface
 
     /**
      * This handler is capable of handling every record
-     * @param LogRecord $record
-     * @return bool
      */
     public function isHandling(LogRecord $record): bool
     {
@@ -60,11 +63,12 @@ class L3Logger implements HandlerInterface
                 unset($tags[$tag]);
             }
         }
+
         return (bool) fwrite($this->file, json_encode([
-                'time' => (int) (microtime(true) * 1000000),
-                'tags' => $tags,
-                'message' => $message
-            ]) . "\n");
+            'time' => (int) (microtime(true) * 1000000),
+            'tags' => $tags,
+            'message' => $message,
+        ])."\n");
     }
 
     public function handleBatch(array $records): void
@@ -79,7 +83,7 @@ class L3Logger implements HandlerInterface
     public function flush(bool $force = false): void
     {
         if ($this->hasError || $force) {
-            $persister = new L3Persister();
+            $persister = new L3Persister;
             $persister->handle();
         }
     }
@@ -93,13 +97,16 @@ class L3Logger implements HandlerInterface
     {
         $message = $format;
         foreach ($context as $key => $value) {
-            if (!is_string($value)) continue;
+            if (! is_string($value)) {
+                continue;
+            }
             $message = str_replace(
                 sprintf('{%s}', $key),
                 $value,
                 $message
             );
         }
+
         return $message;
     }
 }

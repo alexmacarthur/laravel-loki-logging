@@ -1,6 +1,6 @@
 <?php
 
-namespace Devcake\LaravelLokiLogging;
+namespace AlexMacArthur\LaravelLokiLogging;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -8,20 +8,22 @@ use Illuminate\Support\Facades\Http;
 class L3Client
 {
     private PendingRequest $http;
+
     private string $path;
 
     public function __construct()
     {
         $this->http = Http::withBasicAuth(
-            config('l3.loki.username'),
-            config('l3.loki.password')
+            config('l3.loki.username', ''),
+            config('l3.loki.password', '')
         );
 
-        $this->path = config('l3.loki.server') . "/loki/api/v1/push";
+        $this->path = config('l3.loki.server').'/loki/api/v1/push';
     }
 
-    public function time(): string {
-        return strval((int)(microtime(true) * 1000000000));
+    public function time(): string
+    {
+        return strval((int) (microtime(true) * 1000000000));
     }
 
     public function log(array $messages, array $tags = [])
@@ -29,8 +31,8 @@ class L3Client
         return $this->http->post($this->path, [
             'streams' => [[
                 'stream' => $tags,
-                'values' => $messages
-            ]]
+                'values' => $messages,
+            ]],
         ]);
     }
 }
