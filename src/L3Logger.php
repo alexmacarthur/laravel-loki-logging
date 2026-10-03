@@ -64,11 +64,22 @@ class L3Logger implements HandlerInterface
             }
         }
 
-        return (bool) fwrite($this->file, json_encode([
+        $line = json_encode([
             'time' => (int) (microtime(true) * 1000000),
             'tags' => $tags,
             'message' => $message,
-        ])."\n");
+        ])."\n";
+
+        if (! flock($this->file, LOCK_EX)) {
+            return false;
+        }
+
+        fseek($this->file, SEEK_END);
+        $result = fwrite($this->file, $line);
+        fflush($this->file);
+        flock($this->file, LOCK_UN);
+
+        return (bool) $result;
     }
 
     public function handleBatch(array $records): void
@@ -83,14 +94,20 @@ class L3Logger implements HandlerInterface
     public function flush(bool $force = false): void
     {
         if ($this->hasError || $force) {
-            $persister = new L3Persister;
-            $persister->handle();
+            try {
+                $persister = new L3Persister;
+                $persister->handle();
+            } catch (\Throwable $e) {
+                error_log('L3Logger: failed to persist logs to Loki. '.$e->getMessage());
+            }
         }
     }
 
     public function close(): void
     {
-        fclose($this->file);
+        if (is_resource($this->file)) {
+            fclose($this->file);
+        }
     }
 
     private function formatString(string $format, array $context): string
