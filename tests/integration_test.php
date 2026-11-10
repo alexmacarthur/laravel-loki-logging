@@ -549,6 +549,116 @@ test('logger flush persists on force and close is idempotent', function (): void
     unlink($path);
 });
 
+test('logger truncates oversized string tags instead of shipping them raw', function (): void {
+    $path = tempnam(sys_get_temp_dir(), 'l3log');
+    $file = fopen($path, 'a');
+    $logger = newLogger($file);
+
+    $logger->handle(newRecord('boom', ['big' => str_repeat('x', 5000), 'ok' => 'fine', 'num' => 7]));
+    fclose($file);
+
+    $data = json_decode(trim(file_get_contents($path)), true);
+    assertSame('fine', $data['tags']['ok']);
+    assertTrue(str_ends_with($data['tags']['big'], '... [truncated]'), 'oversized tag must be marked truncated');
+    assertSame(1000 + strlen('... [truncated]'), strlen($data['tags']['big']));
+    assertTrue(! isset($data['tags']['num']), 'non-string tags are still dropped, not stringified');
+    unlink($path);
+});
+
+test('logger truncate keeps multibyte characters intact', function (): void {
+    $path = tempnam(sys_get_temp_dir(), 'l3log');
+    $file = fopen($path, 'a');
+    $logger = newLogger($file);
+
+    $logger->handle(newRecord('boom', ['big' => str_repeat('é', 5000)]));
+    fclose($file);
+
+    $data = json_decode(trim(file_get_contents($path)), true);
+    assertTrue(mb_check_encoding($data['tags']['big'], 'UTF-8'), 'truncation must not split multibyte characters');
+    assertSame('é', mb_substr($data['tags']['big'], 0, 1, 'UTF-8'));
+    unlink($path);
+});
+
+test('logger flush ships the buffer after an error without force', function (): void {
+    $base = freshStorage();
+    resetHttp();
+    Http::fake(['*' => Http::response('ok', 204)]);
+    file_put_contents(bufferFile(), makeLine(['app' => 'x'], 'pending'));
+
+    $path = $base.'/writer.log';
+    $file = fopen($path, 'a');
+    $logger = newLogger($file);
+
+    $logger->handle(newRecord('something broke', [], Level::Error));
+    $logger->flush();
+
+    assertSame(1, count(Http::recorded()), 'error must trigger an immediate flush');
+    assertSame('', file_get_contents(bufferFile()));
+    fclose($file);
+    unlink($path);
+});
+
+test('logger flush ships the buffer after a critical record without force', function (): void {
+    $base = freshStorage();
+    resetHttp();
+    Http::fake(['*' => Http::response('ok', 204)]);
+    file_put_contents(bufferFile(), makeLine(['app' => 'x'], 'pending'));
+
+    $path = $base.'/writer.log';
+    $file = fopen($path, 'a');
+    $logger = newLogger($file);
+
+    $logger->handle(newRecord('billing exploded', [], Level::Critical));
+    $logger->flush();
+
+    assertSame(1, count(Http::recorded()), 'critical must trigger an immediate flush');
+    fclose($file);
+    unlink($path);
+});
+
+test('handle drops a 400-rejected chunk and keeps shipping the rest', function (): void {
+    freshStorage();
+    resetHttp();
+    Http::fake(function ($request) {
+        foreach ($request->data()['streams'] ?? [] as $stream) {
+            if (($stream['stream']['app'] ?? null) === 'poison') {
+                return Http::response('entry too far behind', 400);
+            }
+        }
+
+        return Http::response('ok', 204);
+    });
+
+    $size = chunkSize();
+    $lines = '';
+    for ($i = 0; $i < $size; $i++) {
+        $lines .= makeLine(['app' => 'poison'], "old-{$i}");
+    }
+    $lines .= makeLine(['app' => 'good'], 'new');
+    file_put_contents(bufferFile(), $lines);
+
+    $persister = persist();
+
+    assertTrue(count(Http::recorded()) >= 2, 'rejected chunk must not stop the following chunk');
+    assertSame(1, count($persister->errors));
+    assertTrue(str_contains($persister->errors[0], 'Dropping chunk'), 'rejection must be reported as a drop, not a retry');
+    assertSame('', file_get_contents(bufferFile()), 'dropped chunk must not be requeued');
+});
+
+test('handle still requeues when Loki rate-limits with 429', function (): void {
+    freshStorage();
+    resetHttp();
+    Http::fake(['*' => Http::response('too many streams', 429)]);
+    $before = makeLine(['app' => 'x'], 'm1');
+    file_put_contents(bufferFile(), $before);
+
+    $persister = persist();
+
+    assertSame($before, file_get_contents(bufferFile()), 'rate-limited lines must be retried, not dropped');
+    assertSame(1, count($persister->errors));
+    assertTrue(! str_contains($persister->errors[0], 'Dropping chunk'));
+});
+
 // ---------------------------------------------------------------------------
 // Summary.
 // ---------------------------------------------------------------------------
