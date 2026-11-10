@@ -5,10 +5,17 @@ namespace AlexMacArthur\LaravelLokiLogging;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
 use Monolog\Handler\HandlerInterface;
+use Monolog\Level;
 use Monolog\LogRecord;
 
 class L3Logger implements HandlerInterface
 {
+    /**
+     * Loki rejects oversized label values, so cap every tag well below
+     * the server limit. Longer context still ships, truncated.
+     */
+    private const MAX_TAG_VALUE_LENGTH = 1000;
+
     /** @var resource|\fopen */
     private mixed $file;
 
@@ -52,13 +59,13 @@ class L3Logger implements HandlerInterface
 
     public function handle(LogRecord $record): bool
     {
-        $this->hasError = $this->hasError || $record->level->name === 'ERROR';
+        $this->hasError = $this->hasError || $record->level->value >= Level::Error->value;
         $recordArray = $record->toArray();
         $message = $this->formatString($this->format, $recordArray);
         $tags = array_merge($this->context, $recordArray['context']);
         foreach ($tags as $tag => $value) {
             if (is_string($value)) {
-                $tags[$tag] = $this->formatString($value, $recordArray);
+                $tags[$tag] = self::truncateTagValue($this->formatString($value, $recordArray));
             } else {
                 unset($tags[$tag]);
             }
@@ -125,5 +132,18 @@ class L3Logger implements HandlerInterface
         }
 
         return $message;
+    }
+
+    /**
+     * Cap a label value so Loki never rejects the push for oversized
+     * labels. Cut on a UTF-8 boundary and mark the value truncated.
+     */
+    private static function truncateTagValue(string $value): string
+    {
+        if (mb_strlen($value, 'UTF-8') <= self::MAX_TAG_VALUE_LENGTH) {
+            return $value;
+        }
+
+        return mb_strcut($value, 0, self::MAX_TAG_VALUE_LENGTH, 'UTF-8').'... [truncated]';
     }
 }

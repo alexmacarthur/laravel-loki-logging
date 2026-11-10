@@ -3,6 +3,7 @@
 namespace AlexMacArthur\LaravelLokiLogging;
 
 use Illuminate\Console\Command;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
 class L3Persister extends Command
@@ -60,18 +61,50 @@ class L3Persister extends Command
                     ->post($path, ['streams' => $streams]);
 
                 if ($response->failed()) {
+                    if (! self::isRetryableStatus($response->status())) {
+                        // The server will never accept this chunk (bad
+                        // labels, samples too old, malformed payload):
+                        // drop it and keep shipping the rest instead of
+                        // requeueing the whole buffer behind it forever.
+                        $this->error('L3Persister: Dropping chunk rejected by Loki (retrying cannot succeed). Status: '.$response->status());
+
+                        continue;
+                    }
+
                     $this->requeue($file, array_merge(...array_slice($chunks, $index)));
                     $this->error('L3Persister: Failed to push logs to Loki. Status: '.$response->status());
 
                     return;
                 }
             } catch (\Throwable $e) {
+                // The push uses retry(), so an HTTP error status arrives
+                // here as a RequestException rather than a response.
+                // Only requeue when retrying could succeed; a rejected
+                // chunk must never hold the rest of the buffer hostage.
+                $status = $e instanceof RequestException ? $e->response->status() : null;
+
+                if ($status !== null && ! self::isRetryableStatus($status)) {
+                    $this->error('L3Persister: Dropping chunk rejected by Loki (retrying cannot succeed). Status: '.$status);
+
+                    continue;
+                }
+
                 $this->requeue($file, array_merge(...array_slice($chunks, $index)));
                 $this->error('L3Persister: Exception while pushing logs to Loki. '.$e->getMessage());
 
                 return;
             }
         }
+    }
+
+    /**
+     * Whether a failed push is worth retrying. Rate limits, timeouts,
+     * and server errors are transient; any other 4xx means Loki will
+     * reject the chunk on every attempt.
+     */
+    private static function isRetryableStatus(int $status): bool
+    {
+        return $status === 408 || $status === 429 || $status >= 500;
     }
 
     /**

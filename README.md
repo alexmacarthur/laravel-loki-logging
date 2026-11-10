@@ -83,6 +83,15 @@ To use them, wrap them in curly braces:
 
 [Loki does not provide any authentication](https://grafana.com/docs/loki/latest/operations/authentication/) out of the box, but it's highly recommended to configure via reverse proxy. This package only supports Basic Auth. If you place your server behind nginx, this can be [set up here](https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-http-basic-authentication).
 
+## Delivery guarantees
+
+Every log is buffered locally first, so a slow or down Loki server never blocks your application. Delivery then works as follows:
+
+- `loki:persist` (scheduled, e.g. every minute) drains the whole buffer and pushes it in 1000-line chunks. This is the normal transport for everything below error level.
+- A request that logs at error level or above flushes the buffer when it shuts down, so errors arrive without waiting for the next scheduled run.
+- Label values over 1000 characters are truncated (marked `... [truncated]`). Loki rejects oversized labels, and one giant value must not sink the push.
+- A chunk Loki rejects with a 4xx other than 408/429 (bad labels, samples older than the server's max age, malformed payload) is dropped with a console error and the persister continues with the rest. Retrying those can never succeed, and requeueing them would stall every log behind them. Rate limits (429), timeouts, and 5xx responses keep the existing requeue-and-retry behavior.
+
 ## Shout-Out
 
 This package was originally forked from @devcake-deventer's [laravel-loki-logging](https://github.com/devcake-deventer/laravel-loki-logging) package. Thank you for the great starting point!
